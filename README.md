@@ -194,14 +194,33 @@ That is the intended low-friction path. It:
 - lets you press `o` to open a local setup/status page
 ```
 
-In ChatGPT Developer Mode, create a new app and paste the copied URL:
+## ChatGPT app setup
+
+Before you paste the CodexPro URL, enable ChatGPT apps for your account:
+
+```text
+ChatGPT profile menu
+-> Settings
+-> Apps
+-> Advanced settings
+-> turn on Developer mode
+-> turn on Enforce CSP in developer mode
+-> Create app
+```
+
+Keep CSP enabled. CodexPro widgets declare a strict CSP and do not need unrestricted network access.
+
+In Create App, use:
 
 ```text
 Name: CodexPro
+Description: Local workspace bridge for ChatGPT coding
 Connection: Server URL
 Server URL: paste the copied URL
 Authentication: No Authentication / None
 ```
+
+The copied Server URL already includes the private CodexPro token. Do not paste the token separately unless your ChatGPT UI supports custom headers.
 
 Keep the terminal running while ChatGPT uses the connector. When you stop it, the quick-tunnel URL stops working.
 

@@ -149,12 +149,19 @@
           <div class="step">
             <span>2</span>
             <div>
-              <strong>Create a ChatGPT app</strong>
-              <p>Use Connection: Server URL. Paste the copied URL. Set Authentication to None.</p>
+              <strong>Enable ChatGPT Developer Mode</strong>
+              <p>In ChatGPT, open Profile -> Settings -> Apps -> Advanced settings. Turn on Developer mode and Enforce CSP in developer mode, then click Create app.</p>
             </div>
           </div>
           <div class="step">
             <span>3</span>
+            <div>
+              <strong>Create a ChatGPT app</strong>
+              <p>Name it CodexPro. Use Connection: Server URL. Paste the copied URL. Set Authentication to No Authentication / None.</p>
+            </div>
+          </div>
+          <div class="step">
+            <span>4</span>
             <div>
               <strong>Use CodexPro in chat</strong>
               <p>Ask ChatGPT to inspect files, make scoped edits, and verify with search, read, bash, and git tools.</p>
@@ -285,13 +292,27 @@ codexpro start</code></pre>
             <p>Saved profiles make future starts reuse the same tunnel provider, hostname, port, mode, and token.</p>
           </article>
           <article>
-            <small>ChatGPT app fields</small>
+            <small>ChatGPT settings path</small>
+            <h3>Enable apps once</h3>
+            <dl>
+              <div><dt>Open</dt><dd>Profile -> Settings</dd></div>
+              <div><dt>Go to</dt><dd>Apps -> Advanced settings</dd></div>
+              <div><dt>Enable</dt><dd>Developer mode + Enforce CSP</dd></div>
+              <div><dt>Then</dt><dd>Create app</dd></div>
+            </dl>
+            <p>Keep CSP enabled. CodexPro widgets declare a strict CSP and do not need unrestricted network access.</p>
+          </article>
+          <article>
+            <small>Create App fields</small>
             <h3>Paste the copied URL</h3>
             <dl>
               <div><dt>Name</dt><dd>CodexPro</dd></div>
+              <div><dt>Description</dt><dd>Local workspace bridge for ChatGPT coding</dd></div>
               <div><dt>Connection</dt><dd>Server URL</dd></div>
+              <div><dt>Server URL</dt><dd>Paste copied CodexPro URL</dd></div>
               <div><dt>Authentication</dt><dd>No Authentication / None</dd></div>
             </dl>
+            <p>The copied Server URL already includes the private CodexPro token. Do not paste the token separately unless your ChatGPT UI supports custom headers.</p>
           </article>
           <article>
             <small>Doctor</small>
