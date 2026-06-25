@@ -1,6 +1,7 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -38,9 +39,67 @@ async function readProfile(root, home) {
   return JSON.parse(await fs.readFile(path.join(home, 'profiles', `${id}.json`), 'utf8'));
 }
 
+async function runtimeStatusPath(root, home) {
+  const realRoot = await fs.realpath(root);
+  const id = createHash('sha256').update(realRoot).digest('hex').slice(0, 24);
+  return path.join(home, 'runtime', `${id}.json`);
+}
+
+async function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : undefined;
+      server.close(() => (port ? resolve(port) : reject(new Error('no free port'))));
+    });
+    server.on('error', reject);
+  });
+}
+
+async function waitForJson(filePath, predicate, label) {
+  const deadline = Date.now() + 10_000;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+      if (predicate(data)) return data;
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`timed out waiting for ${label}: ${lastError?.message ?? 'predicate not met'}`);
+}
+
+async function withStartedCodexPro(args, env, fn) {
+  const child = spawn(process.execPath, ['scripts/codexpro.mjs', 'start', ...args], {
+    cwd: path.resolve('.'),
+    env,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let output = '';
+  let closed = false;
+  const closedPromise = new Promise((resolve) => child.once('close', (code, signal) => {
+    closed = true;
+    resolve({ code, signal });
+  }));
+  child.stdout.on('data', (chunk) => { output += chunk; });
+  child.stderr.on('data', (chunk) => { output += chunk; });
+  try {
+    await fn();
+  } catch (error) {
+    throw new Error(`${error.message}\nstart output:\n${output}`);
+  } finally {
+    if (!closed) child.kill('SIGTERM');
+    await closedPromise;
+  }
+}
+
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-root-'));
 const reuseRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-reuse-'));
 const policyRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-policy-'));
+const runtimeRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-runtime-'));
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-home-'));
 const env = { ...process.env, CODEXPRO_HOME: home };
 
@@ -68,6 +127,8 @@ const saved = run([
   'full',
   '--widget-domain',
   'https://widgets.codexpro.test',
+  '--tool-cards',
+  'on',
   '--token',
   'codexpro-settings-token'
 ], env);
@@ -76,7 +137,7 @@ if (!saved.includes('Saved workspace settings')) {
 }
 
 const shown = run(['settings', 'show', '--root', root], env);
-for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Bash transcript', 'full', '<saved>']) {
+for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Tool cards', 'on', 'Bash transcript', 'full', '<saved>']) {
   if (!shown.includes(expected)) {
     throw new Error(`settings show missing ${expected}\n${shown}`);
   }
@@ -85,7 +146,7 @@ if (shown.includes('codexpro-settings-token')) {
   throw new Error(`settings show leaked token\n${shown}`);
 }
 const profile = await readProfile(root, home);
-if (profile.toolMode !== 'full' || profile.bashTranscript !== 'full' || profile.widgetDomain !== 'https://widgets.codexpro.test') {
+if (profile.toolMode !== 'full' || profile.toolCards !== true || profile.bashTranscript !== 'full' || profile.widgetDomain !== 'https://widgets.codexpro.test') {
   throw new Error(`settings profile did not persist tool/widget options: ${JSON.stringify(profile)}`);
 }
 
@@ -156,6 +217,30 @@ const guardedProfile = await readProfile(root, home);
 if (guardedProfile.bashSession !== 'guarded-main' || guardedProfile.requireBashSession !== true) {
   throw new Error(`settings profile did not persist bash session guard: ${JSON.stringify(guardedProfile)}`);
 }
+
+const runtimePort = await getFreePort();
+const runtimePath = await runtimeStatusPath(runtimeRoot, home);
+run([
+  'settings',
+  'set',
+  '--root',
+  runtimeRoot,
+  '--tunnel',
+  'none',
+  '--port',
+  String(runtimePort),
+  '--tool-cards',
+  'on'
+], env);
+await withStartedCodexPro([
+  '--root',
+  runtimeRoot
+], env, async () => {
+  const runtime = await waitForJson(runtimePath, (data) => data.toolCards === true, 'tool-cards runtime status');
+  if (runtime.toolCards !== true) {
+    throw new Error(`runtime status did not persist toolCards: ${JSON.stringify(runtime)}`);
+  }
+});
 
 const listed = run(['settings', 'list'], env);
 if (!listed.includes(root) || !listed.includes('codexpro-test.ngrok-free.app')) {

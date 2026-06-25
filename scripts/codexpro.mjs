@@ -71,6 +71,7 @@ Options:
                              full = expose every compatibility and advanced tool.
   --widget-domain <origin>   Dedicated HTTPS origin for ChatGPT widget iframes.
                              Required for app submission. Default: https://rebel0789.github.io.
+  --tool-cards <on|off>      Opt in to ChatGPT widget metadata on tool descriptors. Default: off.
   --tunnel <none|cloudflare|cloudflare-named|ngrok>
                              Expose local MCP. Default: cloudflare.
                              cloudflare = quick tunnel with a new URL each restart.
@@ -516,7 +517,8 @@ function saveRuntimeConnection(root, details, options = {}) {
     bashSession: options.bashSession ?? '',
     requireBashSession: Boolean(options.requireBashSession),
     write: options.write ?? '',
-    toolMode: options.toolMode ?? ''
+    toolMode: options.toolMode ?? '',
+    toolCards: Boolean(options.toolCards)
   };
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
   try {
@@ -571,6 +573,20 @@ function optionBool(args, profile, field, envNames = [], fallback = false) {
   }
   if (profile?.[field] !== undefined && profile[field] !== '') return boolFromValue(profile[field], fallback);
   return fallback;
+}
+
+function hasToolCardsInput(args, profile = {}) {
+  return args.toolCards !== undefined || profile.toolCards !== undefined || (process.env.CODEXPRO_TOOL_CARDS !== undefined && process.env.CODEXPRO_TOOL_CARDS !== '');
+}
+
+function toolCardsProfileEntry(args, profile = {}) {
+  const hasInput = hasToolCardsInput(args, profile);
+  return hasInput ? { toolCards: optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false) } : {};
+}
+
+function toolCardsCliArgs(args, profile = {}) {
+  if (!hasToolCardsInput(args, profile)) return [];
+  return ['--tool-cards', optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false) ? 'on' : 'off'];
 }
 
 function validateBashSession(value) {
@@ -2593,6 +2609,7 @@ function profileFromPreference(root, args, profile, preference) {
     ...(write ? { write } : {}),
     ...(toolMode ? { toolMode } : {}),
     ...(widgetDomain ? { widgetDomain } : {}),
+    ...toolCardsProfileEntry(args, profile),
     ...(args.noInstallCloudflared ? { noInstallCloudflared: true } : {}),
     root
   };
@@ -2715,6 +2732,7 @@ async function runSetupWizard(argv) {
     const write = optionalWriteOption(defaults, profile, mode);
     const toolMode = optionValue(defaults, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], '');
     const widgetDomain = optionValue(defaults, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], '');
+    const toolCardsEntry = toolCardsProfileEntry(defaults, profile);
     if (bash) args.push('--bash', bash);
     if (bashTranscript !== 'compact') args.push('--bash-transcript', bashTranscript);
     if (codexSessions !== 'off') args.push('--codex-sessions', codexSessions);
@@ -2725,6 +2743,7 @@ async function runSetupWizard(argv) {
     if (write) args.push('--write', write);
     if (toolMode) args.push('--tool-mode', toolMode);
     if (widgetDomain) args.push('--widget-domain', widgetDomain);
+    args.push(...toolCardsCliArgs(defaults, profile));
     if (defaults.noInstallCloudflared) args.push('--no-install-cloudflared');
     if (defaults.openChatgpt) args.push('--open-chatgpt');
     if (defaults.noCopyUrl) args.push('--no-copy-url');
@@ -2804,6 +2823,7 @@ async function runSetupWizard(argv) {
         ...(write ? { write } : {}),
         ...(toolMode ? { toolMode } : {}),
         ...(widgetDomain ? { widgetDomain } : {}),
+        ...toolCardsEntry,
         ...(defaults.noInstallCloudflared ? { noInstallCloudflared: true } : {})
       });
       statusLine('ok', `Saved workspace profile: ${savedPath}`);
@@ -2849,6 +2869,7 @@ function printProfile(root, profile) {
     ...(safe.bash ? [labelValue('Bash', safe.bash)] : []),
     ...(safe.write ? [labelValue('Write', safe.write)] : []),
     ...(safe.toolMode ? [labelValue('Tool mode', safe.toolMode)] : []),
+    ...(safe.toolCards !== undefined ? [labelValue('Tool cards', safe.toolCards ? 'on' : 'off')] : []),
     labelValue('Bash transcript', safe.bashTranscript ?? 'compact'),
     labelValue('Codex sessions', safe.codexSessions ?? 'off'),
     ...(safe.codexDir ? [labelValue('Codex dir', safe.codexDir)] : []),
@@ -2921,6 +2942,7 @@ function saveSettingsFromArgs(root, args, profile) {
     ...(mode !== 'agent' || args.write !== undefined || profile.write ? { write } : {}),
     ...(toolMode ? { toolMode } : {}),
     ...(widgetDomain ? { widgetDomain } : {}),
+    ...toolCardsProfileEntry(args, profile),
     ...(args.noInstallCloudflared ?? profile.noInstallCloudflared ? { noInstallCloudflared: true } : {})
   });
   statusLine('ok', `Saved workspace settings: ${savedPath}`);
@@ -3249,6 +3271,7 @@ async function main() {
   const write = writeOption(args, profile, mode);
   const toolMode = optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], 'standard');
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], 'https://rebel0789.github.io');
+  const toolCards = optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false);
   if (!['off', 'safe', 'full'].includes(bash)) throw new Error('--bash must be off, safe, or full');
   if (!['off', 'handoff', 'workspace'].includes(write)) throw new Error('--write must be off, handoff, or workspace');
   if (!['minimal', 'standard', 'full'].includes(toolMode)) throw new Error('--tool-mode must be minimal, standard, or full');
@@ -3270,6 +3293,7 @@ async function main() {
     CODEXPRO_WRITE_MODE: write,
     CODEXPRO_TOOL_MODE: toolMode,
     CODEXPRO_WIDGET_DOMAIN: widgetDomain,
+    CODEXPRO_TOOL_CARDS: toolCards ? '1' : '0',
     CODEXPRO_MODE: mode,
     CODEXPRO_TUNNEL_MODE: tunnel === 'none' ? '0' : '1'
   };
@@ -3330,7 +3354,8 @@ async function main() {
     bashTranscript,
     codexSessions,
     bashSession,
-    requireBashSession
+    requireBashSession,
+    toolCards
   };
 
   if (tunnel === 'none') {

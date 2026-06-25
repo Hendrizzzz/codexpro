@@ -126,6 +126,12 @@ function hasWidgetMeta(tools, name, uri) {
   return meta.ui?.resourceUri === uri && meta['openai/outputTemplate'] === uri;
 }
 
+function hasToolCardStatusMeta(tools, name) {
+  const tool = tools.find((item) => item.name === name);
+  const meta = tool?._meta ?? {};
+  return Boolean(meta['openai/toolInvocation/invoking'] || meta['openai/toolInvocation/invoked']);
+}
+
 await expectHttpTokenRequired('non-loopback', { CODEXPRO_HOST: '0.0.0.0' });
 await expectHttpTokenRequired('tunnel-mode', { CODEXPRO_TUNNEL_MODE: '1' });
 
@@ -175,6 +181,7 @@ const child = spawn('node', ['dist/http.js'], {
     CODEXPRO_BASH_MODE: 'safe',
     CODEXPRO_WRITE_MODE: 'handoff',
     CODEXPRO_TOOL_MODE: 'full',
+    CODEXPRO_TOOL_CARDS: '0',
     CODEXPRO_WIDGET_DOMAIN: 'https://widgets.codexpro.test',
     CODEXPRO_HOME: profileHome
   },
@@ -218,7 +225,7 @@ try {
   if (!homeText.includes('Connection profile') || !homeText.includes('data-profile-form')) {
     throw new Error('onboarding page did not include the saved profile editor');
   }
-  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'noInstallCloudflared']) {
+  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'toolCards', 'noInstallCloudflared']) {
     if (!homeText.includes(`name="${fieldName}"`)) {
       throw new Error(`onboarding page did not include profile field ${fieldName}`);
     }
@@ -266,6 +273,7 @@ try {
       requireBashSession: true,
       write: 'workspace',
       toolMode: 'full',
+      toolCards: true,
       widgetDomain: 'https://widgets.codexpro.test',
       ngrokConfig: path.join(root, 'ngrok.yml'),
       cloudflareTokenFile: 'cloudflare-token',
@@ -287,6 +295,7 @@ try {
     savedProfile.codexSessions !== 'metadata' ||
     savedProfile.bashSession !== 'http-main' ||
     savedProfile.requireBashSession !== true ||
+    savedProfile.toolCards !== true ||
     savedProfile.ngrokConfig !== path.join(root, 'ngrok.yml') ||
     savedProfile.cloudflareTokenFile !== path.join(realRoot, 'cloudflare-token') ||
     savedProfile.noInstallCloudflared !== true ||
@@ -309,8 +318,8 @@ try {
   }
   const toolCardUri = 'ui://widget/codexpro-tool-card-v9.html';
   for (const visualTool of queryToolNames) {
-    if (!hasWidgetMeta(queryTools, visualTool, toolCardUri)) {
-      throw new Error(`${visualTool} should render the CodexPro widget`);
+    if (hasWidgetMeta(queryTools, visualTool, toolCardUri) || hasToolCardStatusMeta(queryTools, visualTool)) {
+      throw new Error(`${visualTool} exposed widget metadata while CODEXPRO_TOOL_CARDS is off`);
     }
   }
 
